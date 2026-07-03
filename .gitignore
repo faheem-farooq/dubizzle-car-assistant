@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Environment / secrets
+.env
+
+# Runtime-generated data
+leads.csv
+*.db
+*.sqlite3
+
+# Original source files (large, not needed in repo)
+Copy_of_sample_cars_dataset.xlsx
+ML_Intern_Take_Home_Assesment_2026*.pdf
+
