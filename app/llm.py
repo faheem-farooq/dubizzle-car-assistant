@@ -30,13 +30,19 @@ RETRYABLE_EXCEPTIONS = (
 )
 
 
+def _is_daily_quota_exhausted(exc: Exception) -> bool:
+    """A per-day quota error will never succeed on retry within the same day -
+    retrying just burns more of the (very small) daily budget for nothing."""
+    return "PerDay" in str(exc)
+
+
 async def _completion_with_retry(**kwargs):
     delay = 2
     for attempt in range(MAX_RETRIES):
         try:
             return litellm.completion(**kwargs)
-        except RETRYABLE_EXCEPTIONS:
-            if attempt == MAX_RETRIES - 1:
+        except RETRYABLE_EXCEPTIONS as e:
+            if _is_daily_quota_exhausted(e) or attempt == MAX_RETRIES - 1:
                 raise
             await asyncio.sleep(delay)
             delay *= 2
@@ -322,8 +328,8 @@ async def stream_chat_turn(session_id: str, user_id: Optional[str], message: str
                     full_reply += text
                     yield text
             break
-        except RETRYABLE_EXCEPTIONS:
-            if yielded_any_this_attempt or attempt == MAX_RETRIES - 1:
+        except RETRYABLE_EXCEPTIONS as e:
+            if yielded_any_this_attempt or _is_daily_quota_exhausted(e) or attempt == MAX_RETRIES - 1:
                 if not full_reply:
                     yield fallback_msg
                     full_reply = fallback_msg
