@@ -9,6 +9,24 @@ import streamlit as st
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="dubizzle Car Assistant", page_icon="🚗")
+
+st.markdown(
+    """
+    <style>
+    html, body, [class*="css"], [data-testid="stAppViewContainer"],
+    [data-testid="stSidebar"], .stChatMessage, button, input, textarea {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+            "Helvetica Neue", Arial, sans-serif !important;
+    }
+    h1, h2, h3 {
+        font-weight: 600;
+        letter-spacing: -0.01em;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("🚗 dubizzle Car Assistant")
 
 if "session_id" not in st.session_state:
