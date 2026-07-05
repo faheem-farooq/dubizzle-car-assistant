@@ -106,3 +106,7 @@ if user_message:
         full_reply = st.write_stream(stream_reply(user_message))
 
     st.session_state.messages.append({"role": "assistant", "content": full_reply})
+    # The sidebar's profile fetch runs at the top of the script, before this
+    # turn's tool calls (booking, save_lead) have executed - rerun so it
+    # reflects any long-term-memory updates from this turn immediately.
+    st.rerun()

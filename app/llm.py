@@ -337,10 +337,13 @@ async def stream_chat_turn(session_id: str, user_id: Optional[str], message: str
 
     full_reply = ""
 
-    if final_content is not None:
+    if final_content:
         # The tool-decision call's own response was already the final answer
         # (no further tool call needed) - reuse it via a fake stream instead
         # of spending another real LLM call to regenerate the same text.
+        # (A falsy/empty final_content - the model occasionally returns no
+        # tool_calls AND no content - falls through to a real regeneration
+        # attempt below instead of silently showing nothing.)
         async for chunk in _fake_stream(final_content):
             full_reply += chunk
             yield chunk
