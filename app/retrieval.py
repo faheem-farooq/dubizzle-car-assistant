@@ -39,21 +39,21 @@ def search_inventory(
     mask = pd.Series(True, index=df.index)
 
     if make:
-        mask &= df["make"].str.contains(make, case=False, na=False)
+        mask &= df["make"].str.contains(make, case=False, na=False, regex=False)
     if model:
-        mask &= df["model"].str.contains(model, case=False, na=False)
+        mask &= df["model"].str.contains(model, case=False, na=False, regex=False)
     if trim:
-        mask &= df["trim"].str.contains(trim, case=False, na=False)
+        mask &= df["trim"].str.contains(trim, case=False, na=False, regex=False)
     if year_min is not None:
         mask &= df["year"] >= year_min
     if year_max is not None:
         mask &= df["year"] <= year_max
     if keyword:
         kw_mask = (
-            df["title"].str.contains(keyword, case=False, na=False)
-            | df["description"].str.contains(keyword, case=False, na=False)
-            | df["make"].str.contains(keyword, case=False, na=False)
-            | df["model"].str.contains(keyword, case=False, na=False)
+            df["title"].str.contains(keyword, case=False, na=False, regex=False)
+            | df["description"].str.contains(keyword, case=False, na=False, regex=False)
+            | df["make"].str.contains(keyword, case=False, na=False, regex=False)
+            | df["model"].str.contains(keyword, case=False, na=False, regex=False)
         )
         mask &= kw_mask
 
@@ -71,7 +71,7 @@ def search_inventory(
         if fallback_terms:
             fb_mask = pd.Series(True, index=df.index)
             if make:
-                fb_mask &= df["make"].str.contains(make, case=False, na=False)
+                fb_mask &= df["make"].str.contains(make, case=False, na=False, regex=False)
             if year_min is not None:
                 fb_mask &= df["year"] >= year_min
             if year_max is not None:
@@ -79,10 +79,10 @@ def search_inventory(
             term_mask = pd.Series(False, index=df.index)
             for term in fallback_terms:
                 term_mask |= (
-                    df["title"].str.contains(term, case=False, na=False)
-                    | df["description"].str.contains(term, case=False, na=False)
-                    | df["trim"].str.contains(term, case=False, na=False)
-                    | df["model"].str.contains(term, case=False, na=False)
+                    df["title"].str.contains(term, case=False, na=False, regex=False)
+                    | df["description"].str.contains(term, case=False, na=False, regex=False)
+                    | df["trim"].str.contains(term, case=False, na=False, regex=False)
+                    | df["model"].str.contains(term, case=False, na=False, regex=False)
                 )
             fb_mask &= term_mask
             results = df[fb_mask]

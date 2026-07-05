@@ -112,10 +112,19 @@ authentication (the demo uses a free-text name as a stand-in for a real
 user ID); multi-tenant isolation for the SQLite/CSV stores; a proper price
 extraction model or a structured price field fed back from a real inventory
 system; image-based search or vision-model grounding using the `photo_url`
-field; and evaluation/observability tooling (e.g. logging tool-call
-accuracy, hallucination rate) that a production version of this agent would
-need. One thing that *did* end up in scope after testing: `app/llm.py`
-retries transient Gemini errors (503/rate-limit/connection) with backoff and
+field; eviction/expiry for the in-memory short-term session store (`app/
+memory.py`'s `_sessions` dict grows unboundedly for the life of the process
+- fine for a demo, not for a long-running deployment); and evaluation/
+observability tooling (e.g. logging tool-call accuracy, and specifically
+spot-checking hallucination rate) that a production version of this agent
+would need. Grounding is enforced by data flow (the tool result, not the
+model's own words, is what re-enters context) rather than by prompt alone,
+which is the right architectural call - but nothing double-checks that the
+model's final prose only cites what the last tool result actually returned,
+so a sufficiently contrarian small model could still drift; that residual
+risk is worth watching given `gemini-2.5-flash-lite` is a small/cheap model.
+One thing that *did* end up in scope after testing: `app/llm.py` retries
+transient Gemini errors (503/rate-limit/connection) with backoff and
 degrades to a friendly in-band message rather than crashing the SSE stream —
 Google's current free-tier quota turned out to be tight enough (20
 requests/day per model on the keys used during development) that a

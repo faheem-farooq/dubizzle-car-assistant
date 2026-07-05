@@ -114,16 +114,39 @@ def upsert_preferences(
     notes: Optional[str] = None,
     car_of_interest_id: Optional[int] = None,
 ) -> None:
+    """Merge the given fields into the user's latest known preferences and
+    append a new row with the merged result. A caller that only knows one
+    field (e.g. book_test_drive only knows car_of_interest_id) must not wipe
+    out fields a previous call already captured (e.g. price_min/body_type)."""
     touch_user(user_id)
     now = _now()
     with _lock, _connect() as conn:
+        existing = conn.execute(
+            "SELECT * FROM preferences WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+            (user_id,),
+        ).fetchone()
+
+        def merged(new_value, field: str):
+            if new_value is not None:
+                return new_value
+            return existing[field] if existing else None
+
         conn.execute(
             """
             INSERT INTO preferences
                 (user_id, price_min, price_max, body_type, make_pref, notes, car_of_interest_id, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (user_id, price_min, price_max, body_type, make_pref, notes, car_of_interest_id, now),
+            (
+                user_id,
+                merged(price_min, "price_min"),
+                merged(price_max, "price_max"),
+                merged(body_type, "body_type"),
+                merged(make_pref, "make_pref"),
+                merged(notes, "notes"),
+                merged(car_of_interest_id, "car_of_interest_id"),
+                now,
+            ),
         )
         conn.commit()
 

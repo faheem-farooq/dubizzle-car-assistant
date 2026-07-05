@@ -32,6 +32,11 @@ class CarListing(BaseModel):
     photo_url: str
 
 
+class InventorySearchResponse(BaseModel):
+    count: int
+    results: list[CarListing]
+
+
 class BookingRequest(BaseModel):
     listing_id: int
     requested_day: str = Field(..., description="Day of week, e.g. 'Monday' or an ISO date")

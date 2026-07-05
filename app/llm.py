@@ -40,12 +40,23 @@ async def _completion_with_retry(**kwargs):
     delay = 2
     for attempt in range(MAX_RETRIES):
         try:
-            return litellm.completion(**kwargs)
+            return await litellm.acompletion(**kwargs)
         except RETRYABLE_EXCEPTIONS as e:
             if _is_daily_quota_exhausted(e) or attempt == MAX_RETRIES - 1:
                 raise
             await asyncio.sleep(delay)
             delay *= 2
+
+
+async def _fake_stream(text: str, chunk_words: int = 3, delay: float = 0.03):
+    """Yield already-known text in small word-chunks so the UI still gets a
+    streaming feel, without making a redundant LLM call to regenerate content
+    we already have (the tool-decision call's own response is often already
+    the final answer when no further tool call is needed)."""
+    words = text.split(" ")
+    for i in range(0, len(words), chunk_words):
+        yield " ".join(words[i : i + chunk_words]) + (" " if i + chunk_words < len(words) else "")
+        await asyncio.sleep(delay)
 
 SYSTEM_PROMPT = """You are the dubizzle cars AI Assistant, a friendly, knowledgeable agent that helps users \
 explore a used-car inventory, book test drives, and get their needs qualified as a lead.
@@ -176,6 +187,13 @@ TOOLS = [
 ]
 
 
+def _execute_tool_safe(name: str, args: dict) -> dict:
+    try:
+        return _execute_tool(name, args)
+    except Exception as e:
+        return {"error": f"Tool '{name}' failed unexpectedly: {e}"}
+
+
 def _execute_tool(name: str, args: dict) -> dict:
     if name == "search_inventory":
         results = retrieval.search_inventory(
@@ -269,6 +287,8 @@ async def stream_chat_turn(session_id: str, user_id: Optional[str], message: str
         "rate-limited). Please try again in a moment."
     )
 
+    final_content: Optional[str] = None
+
     for _ in range(MAX_TOOL_ITERATIONS):
         try:
             response = await _completion_with_retry(model=MODEL, messages=messages, tools=TOOLS, tool_choice="auto")
@@ -281,6 +301,7 @@ async def stream_chat_turn(session_id: str, user_id: Optional[str], message: str
         tool_calls = getattr(msg, "tool_calls", None)
 
         if not tool_calls:
+            final_content = msg.content or ""
             break
 
         assistant_msg = {
@@ -302,7 +323,7 @@ async def stream_chat_turn(session_id: str, user_id: Optional[str], message: str
                 args = json.loads(tc.function.arguments or "{}")
             except json.JSONDecodeError:
                 args = {}
-            result = _execute_tool(tc.function.name, args)
+            result = _execute_tool_safe(tc.function.name, args)
             messages.append(
                 {
                     "role": "tool",
@@ -315,26 +336,35 @@ async def stream_chat_turn(session_id: str, user_id: Optional[str], message: str
         messages.append({"role": "user", "content": "Please give your final answer now based on the tool results above."})
 
     full_reply = ""
-    delay = 2
-    for attempt in range(MAX_RETRIES):
-        yielded_any_this_attempt = False
-        try:
-            stream = litellm.completion(model=MODEL, messages=messages, stream=True)
-            for chunk in stream:
-                delta = chunk.choices[0].delta
-                text = getattr(delta, "content", None)
-                if text:
-                    yielded_any_this_attempt = True
-                    full_reply += text
-                    yield text
-            break
-        except RETRYABLE_EXCEPTIONS as e:
-            if yielded_any_this_attempt or _is_daily_quota_exhausted(e) or attempt == MAX_RETRIES - 1:
-                if not full_reply:
-                    yield fallback_msg
-                    full_reply = fallback_msg
+
+    if final_content is not None:
+        # The tool-decision call's own response was already the final answer
+        # (no further tool call needed) - reuse it via a fake stream instead
+        # of spending another real LLM call to regenerate the same text.
+        async for chunk in _fake_stream(final_content):
+            full_reply += chunk
+            yield chunk
+    else:
+        delay = 2
+        for attempt in range(MAX_RETRIES):
+            yielded_any_this_attempt = False
+            try:
+                stream = await litellm.acompletion(model=MODEL, messages=messages, stream=True)
+                async for chunk in stream:
+                    delta = chunk.choices[0].delta
+                    text = getattr(delta, "content", None)
+                    if text:
+                        yielded_any_this_attempt = True
+                        full_reply += text
+                        yield text
                 break
-            await asyncio.sleep(delay)
-            delay *= 2
+            except RETRYABLE_EXCEPTIONS as e:
+                if yielded_any_this_attempt or _is_daily_quota_exhausted(e) or attempt == MAX_RETRIES - 1:
+                    if not full_reply:
+                        yield fallback_msg
+                        full_reply = fallback_msg
+                    break
+                await asyncio.sleep(delay)
+                delay *= 2
 
     memory.append_message(session_id, "assistant", full_reply)

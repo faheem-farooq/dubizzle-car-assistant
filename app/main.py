@@ -4,14 +4,21 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
 from app import booking as booking_module
 from app import leads as leads_module
 from app import llm, memory, retrieval
-from app.schemas import BookingRequest, BookingResult, ChatRequest, UserProfile
+from app.schemas import (
+    BookingRequest,
+    BookingResult,
+    ChatRequest,
+    InventorySearchParams,
+    InventorySearchResponse,
+    UserProfile,
+)
 
 app = FastAPI(title="dubizzle Car Assistant API")
 
@@ -44,20 +51,21 @@ async def chat(req: ChatRequest):
     return EventSourceResponse(event_gen())
 
 
-@app.get("/inventory/search")
+@app.get("/inventory/search", response_model=InventorySearchResponse)
 def inventory_search(
-    make: Optional[str] = None,
-    model: Optional[str] = None,
-    trim: Optional[str] = None,
-    year_min: Optional[int] = None,
-    year_max: Optional[int] = None,
-    keyword: Optional[str] = None,
+    params: InventorySearchParams = Depends(),
     limit: int = Query(10, ge=1, le=100),
-) -> dict:
+) -> InventorySearchResponse:
     results = retrieval.search_inventory(
-        make=make, model=model, trim=trim, year_min=year_min, year_max=year_max, keyword=keyword, limit=limit
+        make=params.make,
+        model=params.model,
+        trim=params.trim,
+        year_min=params.year_min,
+        year_max=params.year_max,
+        keyword=params.keyword,
+        limit=limit,
     )
-    return {"count": len(results), "results": results}
+    return InventorySearchResponse(count=len(results), results=results)
 
 
 @app.post("/booking", response_model=BookingResult)
