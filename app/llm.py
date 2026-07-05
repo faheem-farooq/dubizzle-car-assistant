@@ -259,7 +259,11 @@ def _has_meaningful_history(profile: Optional[dict]) -> bool:
     return any(profile.get(field) is not None for field in _PROFILE_SIGNAL_FIELDS)
 
 
-def _build_messages(session_id: str, user_id: Optional[str], message: str) -> list[dict]:
+def _build_messages(session_id: str, user_id: Optional[str]) -> list[dict]:
+    """Builds the full message list from short-term history. Assumes the
+    current turn's user message has already been appended to that history
+    (by the caller, via memory.append_message) - it must NOT be appended
+    again here, or the model sees the same user turn twice in a row."""
     system_content = SYSTEM_PROMPT
     if user_id:
         profile = memory.get_user_profile(user_id)
@@ -269,7 +273,7 @@ def _build_messages(session_id: str, user_id: Optional[str], message: str) -> li
             system_content += f"\n\nThis is a new user (user_id={user_id}) with no prior history."
 
     history = memory.get_history(session_id)
-    messages = [{"role": "system", "content": system_content}] + history + [{"role": "user", "content": message}]
+    messages = [{"role": "system", "content": system_content}] + history
     return messages
 
 
@@ -277,7 +281,7 @@ async def stream_chat_turn(session_id: str, user_id: Optional[str], message: str
     """Runs the tool-calling loop, then streams the final natural-language reply.
     Yields text chunks. Also persists the turn into short-term session history."""
     memory.append_message(session_id, "user", message)
-    messages = _build_messages(session_id, user_id, message)
+    messages = _build_messages(session_id, user_id)
 
     if user_id:
         memory.touch_user(user_id)
