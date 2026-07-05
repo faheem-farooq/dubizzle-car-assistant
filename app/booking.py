@@ -23,13 +23,11 @@ def _parse_day(requested_day: str) -> tuple[Optional[str], Optional[str]]:
     """Returns (canonical_day_name, error) - canonical_day_name is None on failure."""
     raw = requested_day.strip()
 
-    # Try an explicit weekday name first (e.g. "Monday", "mon").
     lowered = raw.lower()
     for name, _idx in _ALLOWED_DAYS.items():
         if lowered == name or lowered == name[:3]:
             return name.capitalize(), None
 
-    # Otherwise try to parse as an ISO date and derive the weekday.
     for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y"):
         try:
             dt = datetime.strptime(raw, fmt)
