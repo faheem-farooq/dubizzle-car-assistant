@@ -2,6 +2,7 @@
 The Streamlit client is a thin caller of these endpoints only."""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -20,7 +21,15 @@ from app.schemas import (
     UserProfile,
 )
 
-app = FastAPI(title="dubizzle Car Assistant API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    memory.init_db()
+    retrieval.load_inventory()
+    yield
+
+
+app = FastAPI(title="dubizzle Car Assistant API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,12 +37,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def startup() -> None:
-    memory.init_db()
-    retrieval.load_inventory()
 
 
 @app.get("/health")

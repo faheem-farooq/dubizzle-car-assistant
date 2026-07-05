@@ -52,16 +52,6 @@ class BookingResult(BaseModel):
     time: Optional[str] = None
 
 
-class LeadRequest(BaseModel):
-    user_id: str
-    price_min: Optional[float] = None
-    price_max: Optional[float] = None
-    notes: Optional[str] = None
-    car_of_interest_id: Optional[int] = None
-    body_type: Optional[str] = None
-    make_pref: Optional[str] = None
-
-
 class UserProfile(BaseModel):
     user_id: str
     name: Optional[str] = None
