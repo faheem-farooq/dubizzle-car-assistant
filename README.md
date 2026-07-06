@@ -87,10 +87,10 @@ Tests three guardrails in sequence: declines an off-topic coding request, declin
 Tests the time-of-day booking boundary (rejects 9pm as outside the 8:00–20:00 window) and natural chit-chat handling — the assistant responds warmly and proactively surfaces the user's previously saved budget and car of interest.
 ![](screenshots/07_chitchat_and_more_validation.png)
 
-### Long-term memory
+### Long-term memory (new session)
 
-**"Hi again, what was I looking for?"**
-Tests recall of previously saved preferences (budget and car of interest) within the same extended session. Note: this screenshot was captured within the same session rather than after an explicit session reset via the "New session" button, so it demonstrates in-session recall rather than the cross-session long-term-memory recall the assignment specifically calls out.
+**Click "New session (keep user)" in the sidebar, then: "Hi again, what was I looking for?"**
+Tests long-term memory recall across a genuinely new session — session_id is reset (short-term chat history is empty), but user_id is preserved. The assistant correctly recalls both the previously stated budget (300,000–400,000 AED) and the car of interest (Porsche Cayenne, listing ID 8) by reading from SQLite at the start of the new session.
 ![](screenshots/08_recall_same_session.png)
 
 **"peter" identified as new user → "What am I looking for?"**
