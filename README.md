@@ -44,7 +44,7 @@ port 8000. Set `BACKEND_URL` as an env var if the backend runs elsewhere.
 
 ### Demonstrating long-term memory across "sessions"
 
-1. In the sidebar, enter a name (e.g. `faheem`) and click **Identify me**.
+1. In the sidebar, enter a name and click **Identify me**.
 2. Chat for a bit — ask about SUVs, mention a budget, book a test drive.
 3. Click **New session (keep user)** — this resets `session_id` (simulating
    a brand-new conversation/short-term memory wipe) while keeping the same
@@ -99,84 +99,68 @@ Tests user data isolation — a different `user_id` has zero access to another u
 
 ## Why this stack
 
-- **uv**: fast, single-lockfile dependency + venv management; the assignment
-  explicitly calls it out as the preferred tooling.
-- **FastAPI**: the assignment requires it outright, and it gives us
-  Pydantic-validated request/response models plus native async support for
-  SSE streaming with almost no boilerplate.
-- **LiteLLM**: lets the app target Gemini (`gemini/gemini-2.5-flash-lite` by
-  default, configurable via `LITELLM_MODEL` in `.env` — `gemini-2.0-flash`,
-  the model named in the original brief, was deprecated/shut down as of
-  mid-2026, so any current key needs a currently-served model instead)
-  through an OpenAI-compatible `completion()`/tool-calling interface, which
-  keeps `app/llm.py` provider-agnostic — swapping models later is a
-  one-line change.
-- **Pandas tool-calling over RAG**: the dataset is small (100 rows), mostly
-  structured (make/model/trim/year) with one free-text field. A vector DB
-  and embeddings would add latency, cost, and a whole new failure mode
-  (semantic near-misses) for no real benefit at this scale. Instead, the LLM
-  calls `search_inventory` with structured args, and the backend runs an
-  **exact pandas filter** — the agent can only ever describe rows that
-  really exist, which directly satisfies the "no hallucinated inventory"
-  grading criterion. Free-text `keyword` search still covers body-type/
-  feature queries (e.g. "SUV", "sunroof") that aren't in a dedicated column.
-- **SQLite + CSV split**: SQLite (`users`, `preferences`) is the queryable
-  long-term memory store the agent reads back at session start to
-  personalize greetings. `leads.csv` is kept as a separate, explicitly
-  human-readable artifact because the assignment calls out a **local CSV**
-  as the lead-capture mechanism — treating it as a write-once log (rather
-  than folding it into SQLite) mirrors how a sales/CRM export would actually
-  be consumed downstream.
-- **Streamlit**: chosen over the Jupyter notebook option to get a real chat
-  UI with `st.chat_input`/`st.write_stream`, which makes the SSE-streamed
-  backend and the "new session, same user" long-term-memory demo tangible
-  to click through, rather than a linear script.
+I used uv for dependency management since the assignment specifically recommended 
+it, and it really is fast and simple. FastAPI was a requirement, but it's also just 
+a good fit here: it validates requests automatically and handles streaming responses (SSE) 
+with very little extra code. For the LLM, I went with LiteLLM so the app talks to 
+Gemini through a standard interface rather than a Gemini-specific one.
+
+For search, I chose plain pandas filtering over a vector database. The dataset is 
+small about 100 rows and mostly structured (make, model, trim, year), with 
+just one free-text field. A vector DB would add real complexity (embeddings, 
+latency, semantic near-misses) for very little benefit at this size. Instead, the 
+LLM calls a search tool with structured arguments, and the backend runs a literal 
+pandas filter so the agent can only ever talk about cars that actually exist in 
+the data, which is exactly what "no hallucinated inventory" is asking for. A 
+keyword fallback still covers things like "SUV" or "sunroof" that aren't their 
+own column.
+
+For memory, I split things across two stores on purpose. SQLite holds the 
+long-term, queryable stuff — user profiles and preferences the agent reads back 
+at the start of a session to personalize its greeting. leads.csv stays separate, 
+as its own plain file, because the brief specifically asks for a local CSV as the 
+lead-capture output — treating it as a simple, human-readable log (rather than 
+folding it into SQLite) mirrors how a sales team would actually want to open and 
+skim it.
+
+Finally, I picked Streamlit over the Jupyter notebook option so I could build an 
+actual chat interface — with real streaming responses and a sidebar for switching 
+users — rather than a script you step through cell by cell. It makes the 
+"new session, same user, remembers you" demo something you can just click through.
 
 ## Design decisions
 
-The core grounding guarantee is architectural, not prompt-based: the LLM
-never free-generates a car — it must call `search_inventory`, which runs a
-literal pandas filter over `data/cars_cleaned.csv`, and the tool result (not
-the model's own words) is what gets fed back into context. Because the
-dataset has no structured price column, price is treated as a
-**lead-qualification input** rather than a filterable field: the assistant
-asks the user for their budget and stores it via `save_lead` (which both
-appends to `leads.csv` and upserts SQLite `preferences`), instead of
-regex-guessing prices out of free-text descriptions where they're
-inconsistently formatted or simply "call for price". Short-term memory is a
-plain in-process list of chat messages keyed by `session_id`, replayed into
-the LLM every turn; long-term memory is SQLite keyed by `user_id`, looked up
-once at the start of each `/chat` call and injected into the system prompt
-so the model can reference it naturally ("last time you were looking for a
-white SUV..."). Guardrails (car-topics-only, no competitor mentions, no
-fabricated specs) live entirely in the system prompt in `app/llm.py` — this
-is intentionally the single place reviewers should look to see the
-control surface.
+The most important decision here is that grounding isn't just a prompt instruction, 
+it's baked into how the code works. The model never gets to just make up a car; 
+it has to call a search tool, which runs a real pandas filter over the actual CSV, 
+and whatever comes back from that filter is what gets fed back into the 
+conversation. Since the dataset doesn't have a clean price column, I treat price 
+as something the user tells us (a budget, for lead-qualification) rather than 
+something the app filters by trying to regex a price out of messy free-text 
+descriptions felt like the wrong trade, since prices are often missing entirely 
+or written inconsistently. Short-term memory is just a plain list of messages per 
+session, replayed to the model each turn. Long-term memory is SQLite, looked up 
+once per conversation and given to the model so it can say things like "last time 
+you were looking for a white SUV" naturally, instead of the user having to repeat 
+themselves. All the guardrails staying on-topic, never mentioning competitors, 
+never inventing specs live in one place, the system prompt in llm.py, so anyone 
+reviewing the control logic knows exactly where to look.
 
-**Outside the scope of this project** (explicitly deferred): user
-authentication (the demo uses a free-text name as a stand-in for a real
-user ID); multi-tenant isolation for the SQLite/CSV stores; a proper price
-extraction model or a structured price field fed back from a real inventory
-system; image-based search or vision-model grounding using the `photo_url`
-field; eviction/expiry for the in-memory short-term session store (`app/
-memory.py`'s `_sessions` dict grows unboundedly for the life of the process
-- fine for a demo, not for a long-running deployment); and evaluation/
-observability tooling (e.g. logging tool-call accuracy, and specifically
-spot-checking hallucination rate) that a production version of this agent
-would need. Grounding is enforced by data flow (the tool result, not the
-model's own words, is what re-enters context) rather than by prompt alone,
-which is the right architectural call - but nothing double-checks that the
-model's final prose only cites what the last tool result actually returned,
-so a sufficiently contrarian small model could still drift; that residual
-risk is worth watching given `gemini-2.5-flash-lite` is a small/cheap model.
-One thing that *did* end up in scope after testing: `app/llm.py` retries
-transient Gemini errors (503/rate-limit/connection) with backoff and
-degrades to a friendly in-band message rather than crashing the SSE stream —
-Google's current free-tier quota turned out to be tight enough (20
-requests/day per model on the keys used during development) that a
-production deployment would need a paid tier or its own request budgeting;
-that's noted here rather than solved, since it's a billing decision, not an
-engineering one.
+There's a real list of things I deliberately left out, given the scope of a 
+take-home: proper user authentication (right now a name typed into a text box 
+stands in for a real user ID), true multi-tenant isolation of the data stores, a 
+real price-extraction model, image-based search using the photo_url field, and 
+any kind of eviction for the in-memory session store (it just grows for as long 
+as the process runs fine for a demo, not for production). I'd also flag one 
+subtler risk worth knowing about: grounding works because tool results (not the 
+model's own words) are what re-enter the conversation, but nothing currently 
+double-checks that the model's final reply only repeats what that tool result 
+said so in theory a small, cheap model like flash-lite could occasionally drift. 
+One thing I didn't originally plan for but ended up needing: Gemini's free tier 
+turned out to have a tight daily quota, so I added retry-with-backoff and a 
+graceful fallback message instead of letting the whole thing crash when that 
+happens a real production version would need a paid tier or its own request 
+budgeting, which is a billing question more than an engineering one.
 
 ## API
 
