@@ -4,7 +4,7 @@ An AI assistant that helps users explore a ~100-listing used-car inventory,
 holds a contextual multi-turn conversation, books test drives, qualifies
 leads, and recognizes returning users across sessions.
 
-Built for the dubizzle ML Intern take-home assessment.
+
 
 ## Setup
 
